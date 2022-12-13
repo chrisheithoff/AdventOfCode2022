@@ -35,9 +35,6 @@ oo::define Dir {
     }
 
     method addChildDir {dir_name} {
-        if {[dict exists $ChildDirs $dir_name]} {
-            return
-        }
         puts "Add child dir: $dir_name"
         dict set ChildDirs $dir_name [Dir new $dir_name]
     }
@@ -81,10 +78,9 @@ oo::define Dir {
         }
     }
 
-    method compute_sizes {"force 0"} {
-        # Don't recompute Size again until you force it.
-        if {$Size > -1 && $force == 0} {
-            return $Size
+    method compute_sizes {"recursive 0"} {
+        if {$recursive == 0} {
+            set ::sizes [list]
         }
         set total_size 0
 
@@ -95,79 +91,67 @@ oo::define Dir {
 
         # Recursively call the tree method for the child directories
         foreach child_dir [dict values $ChildDirs] {
-            incr total_size [$child_dir compute_sizes]
+            incr total_size [$child_dir compute_sizes 1]
         }
 
         set Size $total_size
+        lappend ::sizes $Size
         return $Size
     }
 }
 
-# Make a dict to record the existence of directories
-#   key = full path
-#   value = Dir object
-set directories [dict create]
-
-# Define top level directory and initialize current_dir/path pointers
+# Define top level directory and initialize the dir_stack
 set root [Dir new ""]
-dict set directories "" $root
 
+# Make a stack of Dir objects.  
+#   "cd a" will add "a" to the stack
+#   "cd .." will pop the stack
+set dir_stack $root
 set current_dir $root
-set current_path ""
 
+set ls_flag 0
 foreach line $data {
     # Change directories with the 'cd' command.
     if {[string match {$ cd *} $line]} {
         set cd_arg [lindex $line 2]
+        set ls_flag 0
         if {$cd_arg == "/"} {
-            set current_path ""
+            set dir_stack $root
         } elseif {$cd_arg == ".."} {
-            set current_path  [file dirname $current_path]
-            if {$current_path == "/"} {
-                set current_path ""
-            }
+            lpop dir_stack
         } else {
-            set current_path "$current_path/$cd_arg"
+            lappend dir_stack [$current_dir getChildDir $cd_arg]
         }
-        puts "$line: path = {$current_path}"
+        set current_dir [lindex $dir_stack end]
 
-        if {[dict exists $directories $current_path]} {
-            set current_dir [dict get $directories $current_path]
-        } else {
-            error "oops, $current_path doesn't exist"
-        }
         continue
     }
 
-    # ls results
+    # Set a flag for a line with ls.
     if {[string match {$ ls} $line]} {
+        set ls_flag 1
         continue
-    } elseif {[string match {dir *} $line]} {
-        set dir_name [lindex $line 1]
-        if {![$current_dir existsChildDir $dir_name]} {
-            $current_dir addChildDir $dir_name
+    }
 
-            set dir_path $current_path/$dir_name
-            puts "New dir: $dir_path"
-            set new_dir [$current_dir getChildDir $dir_name]
-            dict set directories $dir_path $new_dir
+    # Add files or directories after a line with the ls command
+    if {$ls_flag == 1} {
+        if {[string match {dir *} $line]} {
+            set dir_name [lindex $line 1]
+            if {![$current_dir existsChildDir $dir_name]} {
+                $current_dir addChildDir $dir_name
+            }
+        } else {
+            set filesize [lindex $line 0]
+            set filename [lindex $line 1]
+            $current_dir addFile $filename $filesize
         }
-    } else {
-        set filesize [lindex $line 0]
-        set filename [lindex $line 1]
-        $current_dir addFile $filename $filesize
     }
 }
 
 $root tree
 $root compute_sizes
 
-set part1_answer 0
-foreach dir [dict values $directories] {
-    set dir_size [$dir size]
-    if {$dir_size <= 100000} {
-        incr part1_answer $dir_size
-        puts "[$dir name] : $dir_size   ($part1_answer)"
-    }
-}
-puts "Part1 answer: $part1_answer"
+set max_size 100000
+set small_sizes [lmap s $::sizes {if {$s<=$max_size} {string cat $s} else {continue}}]
+
+puts "Part1 answer: [sum $small_sizes]"
