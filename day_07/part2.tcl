@@ -1,6 +1,10 @@
 # Advent of Code 2022.  
 # Day 08: No space left on device  
-# Part 1:  Get sum of total size of directories with total size at most 100000
+# Part 2:  What is the total size of the smallest directory that, if 
+#   deleted, would free up space required for the update.
+#    Total disk space available= 70_000_000
+#    Unused space required = 30_000_000
+#    --> Max space used = 40_000_000
 source ../aoc_library.tcl
 
 set data [file_to_list input.txt]
@@ -162,12 +166,20 @@ foreach line $data {
 $root tree
 $root compute_sizes
 
-set part1_answer 0
+set root_size [$root size]
+set total_disk_space 70000000
+set unused_space [expr {$total_disk_space - $root_size}]
+set min_unused_space 30000000
+
+set min_dir_size_to_delete [expr {$min_unused_space - $unused_space}]
+
+set part2_answer 10000000000
 foreach dir [dict values $directories] {
     set dir_size [$dir size]
-    if {$dir_size <= 100000} {
-        incr part1_answer $dir_size
-        puts "[$dir name] : $dir_size   ($part1_answer)"
+    if {$dir_size >= $min_dir_size_to_delete} {
+        if {$dir_size < $part2_answer} {
+            puts $dir_size
+            set part2_answer $dir_size
+        }
     }
 }
-puts "Part1 answer: $part1_answer"
